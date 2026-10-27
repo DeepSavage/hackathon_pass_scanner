@@ -14,9 +14,9 @@
   .card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:22px;box-shadow:0 4px 14px -4px rgba(15,23,42,.12)}
   h1{font-size:1.4rem;font-weight:800;display:flex;align-items:center;gap:10px;margin-bottom:4px}
   .sub{font-size:.85rem;color:var(--txt2);margin-bottom:16px}
-  .vid{width:100%;aspect-ratio:1/1;background:#000;border-radius:var(--r);overflow:hidden;position:relative;border:2px solid var(--brd)}
+  .vid{width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--r);overflow:hidden;position:relative;border:2px solid var(--brd)}
   .vid.scan{border-color:var(--pri)}
-  #cam{width:100%;height:100%;object-fit:cover;display:block}
+  #cam{width:100%;height:100%;object-fit:contain;display:block}
   .ov{position:absolute;inset:0;pointer-events:none;display:none}
   .vid.scan .ov{display:block}
   .ov::before{content:'';position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--pri),transparent);box-shadow:0 0 8px var(--pri);animation:scanln 2s ease-in-out infinite;top:0}
@@ -43,13 +43,6 @@
   .result-row .lbl{color:var(--txt2);font-weight:600}
   .result-row .val{font-weight:700;text-align:right;word-break:break-all;max-width:65%}
   .sp{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
-  input,select{width:100%;padding:11px 14px;background:var(--surf2);border:1px solid var(--brd);border-radius:var(--rs);color:var(--txt);font-size:.9rem;outline:none;font-family:inherit}
-  input:focus,select:focus{border-color:var(--pri)}
-  .ig{margin-bottom:12px}
-  .ig label{display:block;font-size:.75rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-  .settings-toggle{background:none;border:none;color:var(--pri);font-weight:600;cursor:pointer;font-size:.85rem;padding:4px 0}
-  .settings-panel{display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--brd)}
-  .settings-panel.show{display:block}
   .theme-btn{position:absolute;top:16px;right:16px;background:var(--surf2);border:1px solid var(--brd);border-radius:50%;width:38px;height:38px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center}
   .diag{font-family:'Courier New',monospace;font-size:.72rem;color:var(--txt2);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
   .diag strong{color:var(--txt)}
@@ -80,6 +73,7 @@
       <span>video: <strong id="dRes">—</strong></span>
       <span>fps: <strong id="dFps">0</strong></span>
       <span>decodes: <strong id="dDec">0</strong></span>
+      <span>misses: <strong id="dMiss">0</strong></span>
     </div>
 
     <div id="status" class="msg msg-info">
@@ -92,40 +86,35 @@
       <div class="result-row"><span class="lbl">S.No</span><span class="val" id="rSno">—</span></div>
       <button class="btn btn-ok" id="markBtn" style="margin-top:14px;width:100%">✓ Mark Present</button>
     </div>
-
-    <button class="settings-toggle" id="settingsToggle" style="margin-top:14px">⚙️ Settings</button>
-    <div class="settings-panel" id="settingsPanel">
-      <div class="ig"><label>Apps Script Web App URL</label><input type="text" id="gsUrl" placeholder="https://script.google.com/macros/s/.../exec"></div>
-      <div class="ig"><label>Shared Token</label><input type="text" id="gsToken" placeholder="Same as SHARED_TOKEN"></div>
-      <div class="ig"><label>Sheet Name (tab)</label><input type="text" id="gsSheet" placeholder="Sheet1" value="Sheet1"></div>
-      <div class="ig"><label>QR Secret Key</label><input type="text" id="secretKey" value="HACK2024_GATEPASS_SECRET_KEY_9x7f"></div>
-      <button class="btn btn-pri" id="saveCfg" style="width:100%">💾 Save</button>
-      <div class="diag" style="margin-top:10px" id="cfgDiag"></div>
-    </div>
   </div>
 
 </div>
 
 <script>
 /* ============================================================
-   CONFIG
+   EMBEDDED CONFIG — do not share this file publicly
 ============================================================ */
-const CFG_KEY = 'hackpass_min_cfg';
-let cfg = {
-  gsUrl: '',
-  gsToken: '',
-  gsSheet: 'Sheet1',
+const CFG = {
+  gsUrl: 'https://script.google.com/macros/s/AKfycbwB57nZDBGkhYMvWNaZBqpmxUaWHtHlcR9EeCYJQVdG7K5huWOpc0ivBGTKp9B8MiA/exec',
+  gsToken: 'hacksprint2',
+  gsSheet: 'Participants',
   secretKey: 'HACK2024_GATEPASS_SECRET_KEY_9x7f'
 };
 
 /* ============================================================
    STATE
 ============================================================ */
-let isCamOn = false, stream = null, timer = null;
-let canvas = null, ctx = null;
+let isCamOn = false, stream = null;
+let rafId = null, lastScanTs = 0;
+const SCAN_INTERVAL_MS = 100;
+const MAX_SCAN_DIM = 800;
+
+let scanCanvas = null, scanCtx = null;
+let cropCanvas = null, cropCtx = null;
+
 let lastText = null, lastTime = 0;
-let currentPayload = null;   // { sNo, team, name, raw }
-let diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0 };
+let currentPayload = null;
+let diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0, misses: 0 };
 
 /* ============================================================
    DOM
@@ -134,11 +123,8 @@ const $ = id => document.getElementById(id);
 const cam = $('cam'), vidC = $('vidC'), startBtn = $('startBtn'), stopBtn = $('stopBtn');
 const statusEl = $('status'), resultBox = $('resultBox');
 const rName = $('rName'), rTeam = $('rTeam'), rSno = $('rSno'), markBtn = $('markBtn');
-const dRes = $('dRes'), dFps = $('dFps'), dDec = $('dDec');
+const dRes = $('dRes'), dFps = $('dFps'), dDec = $('dDec'), dMiss = $('dMiss');
 const themeBtn = $('themeBtn');
-const settingsToggle = $('settingsToggle'), settingsPanel = $('settingsPanel');
-const gsUrl = $('gsUrl'), gsToken = $('gsToken'), gsSheet = $('gsSheet'), secretKey = $('secretKey');
-const saveCfg = $('saveCfg'), cfgDiag = $('cfgDiag');
 
 /* ============================================================
    THEME
@@ -155,42 +141,6 @@ themeBtn.addEventListener('click', () => {
 });
 
 /* ============================================================
-   CONFIG PERSISTENCE
-============================================================ */
-function loadCfg() {
-  try {
-    const raw = localStorage.getItem(CFG_KEY);
-    if (raw) cfg = Object.assign(cfg, JSON.parse(raw));
-  } catch (e) {}
-  gsUrl.value = cfg.gsUrl;
-  gsToken.value = cfg.gsToken;
-  gsSheet.value = cfg.gsSheet;
-  secretKey.value = cfg.secretKey;
-  updateCfgDiag();
-}
-function updateCfgDiag() {
-  cfgDiag.innerHTML = cfg.gsUrl && cfg.gsToken
-    ? `<span style="color:var(--ok)">✅ Sheets configured · sheet: ${escapeHtml(cfg.gsSheet)}</span>`
-    : '<span style="color:var(--warn)">⚠️ Sheets not configured · marks will be local only</span>';
-}
-saveCfg.addEventListener('click', () => {
-  cfg.gsUrl = gsUrl.value.trim();
-  cfg.gsToken = gsToken.value.trim();
-  cfg.gsSheet = gsSheet.value.trim() || 'Sheet1';
-  cfg.secretKey = secretKey.value.trim() || 'HACK2024_GATEPASS_SECRET_KEY_9x7f';
-  localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
-  updateCfgDiag();
-  setStatus('ok', '✅ Configuration saved.');
-});
-
-/* ============================================================
-   SETTINGS PANEL
-============================================================ */
-settingsToggle.addEventListener('click', () => {
-  settingsPanel.classList.toggle('show');
-});
-
-/* ============================================================
    DECRYPT
 ============================================================ */
 function xor(text, key) {
@@ -203,10 +153,6 @@ function decrypt(b64, key) {
   try { return xor(decodeURIComponent(escape(atob(b64))), key); }
   catch (e) { return null; }
 }
-
-/* ============================================================
-   FIELD EXTRACTION — works with any CSV schema
-============================================================ */
 function pickField(obj, candidates) {
   const keys = Object.keys(obj);
   for (const cand of candidates) {
@@ -214,7 +160,6 @@ function pickField(obj, candidates) {
     const found = keys.find(k => k.toLowerCase().replace(/[\s._-]/g, '') === c);
     if (found && obj[found] !== '' && obj[found] != null) return String(obj[found]).trim();
   }
-  // Partial fallback
   for (const cand of candidates) {
     const c = cand.replace(/[\s._-]/g, '').toLowerCase();
     const found = keys.find(k => k.toLowerCase().replace(/[\s._-]/g, '').includes(c));
@@ -230,13 +175,21 @@ async function startCamera() {
   if (isCamOn) return;
   try {
     setStatus('info', 'Requesting camera...');
-    canvas = document.createElement('canvas');
-    ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+    scanCanvas = document.createElement('canvas');
+    scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
+    cropCanvas = document.createElement('canvas');
+    cropCtx = cropCanvas.getContext('2d', { willReadFrequently: true });
 
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
       audio: false
     });
+
     cam.srcObject = stream;
 
     await new Promise(res => {
@@ -253,17 +206,26 @@ async function startCamera() {
     }
     if (!cam.videoWidth) throw new Error('Camera stream has no dimensions');
 
+    try {
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      if (caps.focusMode && caps.focusMode.includes('continuous')) {
+        await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      }
+    } catch (e) { /* ignore */ }
+
     isCamOn = true;
     startBtn.disabled = true;
     stopBtn.disabled = false;
     vidC.classList.add('scan');
     setStatus('info', '📷 Camera active — point at a QR code');
 
-    diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0 };
+    diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0, misses: 0 };
     updateDiag();
 
-    if (timer) clearInterval(timer);
-    timer = setInterval(scanFrame, 150);
+    lastScanTs = 0;
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(scanLoop);
 
   } catch (err) {
     console.error(err);
@@ -275,62 +237,95 @@ async function startCamera() {
 }
 
 function stopCamera() {
+  if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   cam.srcObject = null;
   isCamOn = false;
   startBtn.disabled = false;
   stopBtn.disabled = true;
   vidC.classList.remove('scan');
-  if (timer) { clearInterval(timer); timer = null; }
   setStatus('info', '⏹ Camera stopped.');
 }
 startBtn.addEventListener('click', startCamera);
 stopBtn.addEventListener('click', stopCamera);
 
-function scanFrame() {
-  if (!isCamOn || !cam.videoWidth || cam.readyState < 2) return;
+function scanLoop(ts) {
+  if (!isCamOn) return;
+  rafId = requestAnimationFrame(scanLoop);
+
+  if (ts - lastScanTs < SCAN_INTERVAL_MS) return;
+  lastScanTs = ts;
+
+  if (!cam.videoWidth || cam.readyState < 2) return;
 
   const vw = cam.videoWidth, vh = cam.videoHeight;
 
-  // Full frame + 1.5x upscale — no crop. Simplest, most reliable.
-  const scale = Math.min(1.5, 1600 / Math.max(vw, vh));
-  const outW = Math.floor(vw * scale);
-  const outH = Math.floor(vh * scale);
+  const scale = Math.min(1, MAX_SCAN_DIM / Math.max(vw, vh));
+  const w1 = Math.max(1, Math.floor(vw * scale));
+  const h1 = Math.max(1, Math.floor(vh * scale));
 
-  canvas.width = outW;
-  canvas.height = outH;
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(cam, 0, 0, outW, outH);
+  if (scanCanvas.width !== w1 || scanCanvas.height !== h1) {
+    scanCanvas.width = w1;
+    scanCanvas.height = h1;
+  }
 
-  let img;
-  try { img = ctx.getImageData(0, 0, outW, outH); }
-  catch (e) { return; }
+  scanCtx.imageSmoothingEnabled = true;
+  scanCtx.imageSmoothingQuality = 'high';
+  scanCtx.drawImage(cam, 0, 0, vw, vh, 0, 0, w1, h1);
 
+  let decoded = tryJsQR(scanCtx, w1, h1);
   diag.frames++;
+
+  if (!decoded) {
+    const cw = Math.floor(w1 * 0.6);
+    const ch = Math.floor(h1 * 0.6);
+    const cx = Math.floor((w1 - cw) / 2);
+    const cy = Math.floor((h1 - ch) / 2);
+
+    if (cropCanvas.width !== cw || cropCanvas.height !== ch) {
+      cropCanvas.width = cw;
+      cropCanvas.height = ch;
+    }
+
+    cropCtx.imageSmoothingEnabled = true;
+    cropCtx.imageSmoothingQuality = 'high';
+    cropCtx.drawImage(scanCanvas, cx, cy, cw, ch, 0, 0, cw, ch);
+
+    decoded = tryJsQR(cropCtx, cw, ch);
+    if (!decoded) diag.misses++;
+  }
+
   if (diag.frames % 10 === 0) {
     diag.fps = Math.round(10000 / (Date.now() - diag.fpsStart));
     diag.fpsStart = Date.now();
     updateDiag();
   }
 
-  let code = null;
-  try { code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' }); }
-  catch (e) { return; }
-
-  if (code && code.data) {
+  if (decoded) {
     diag.decodes++;
     updateDiag();
-    const now = Date.now(), txt = code.data.trim();
+    const now = Date.now(), txt = decoded.trim();
     if (lastText === txt && (now - lastTime) < 2000) return;
     lastText = txt; lastTime = now;
     handleQR(txt);
   }
 }
 
+function tryJsQR(ctx, w, h) {
+  let img;
+  try { img = ctx.getImageData(0, 0, w, h); }
+  catch (e) { return null; }
+  try {
+    const code = jsQR(img.data, w, h, { inversionAttempts: 'attemptBoth' });
+    return code && code.data ? code.data.trim() : null;
+  } catch (e) { return null; }
+}
+
 function updateDiag() {
   dRes.textContent = cam.videoWidth ? cam.videoWidth + '×' + cam.videoHeight : '—';
   dFps.textContent = diag.fps;
   dDec.textContent = diag.decodes;
+  dMiss.textContent = diag.misses;
 }
 
 /* ============================================================
@@ -342,12 +337,11 @@ function handleQR(text) {
     return;
   }
   const b64 = text.substring('HACKPASS:'.length);
-  const decrypted = decrypt(b64, cfg.secretKey);
+  const decrypted = decrypt(b64, CFG.secretKey);
   if (decrypted === null) {
-    setStatus('bad', '❌ Decryption failed — check secret key in Settings.');
+    setStatus('bad', '❌ Decryption failed — wrong key or corrupted QR.');
     return;
   }
-
   let payload;
   try { payload = JSON.parse(decrypted); }
   catch (e) {
@@ -361,7 +355,6 @@ function handleQR(text) {
 
   currentPayload = { sNo, team, name, raw: payload };
 
-  // Fill result panel
   rName.textContent = name || '—';
   rTeam.textContent = team || '—';
   rSno.textContent = sNo || '—';
@@ -370,7 +363,9 @@ function handleQR(text) {
   markBtn.textContent = '✓ Mark Present';
   markBtn.className = 'btn btn-ok';
 
-  setStatus('ok', `✅ Decrypted: ${name || 'unknown'}${team ? ' · ' + team : ''}`);
+  if (navigator.vibrate) navigator.vibrate(80);
+
+  setStatus('ok', `✅ Detected: ${name || 'unknown'}${team ? ' · ' + team : ''}`);
 }
 
 /* ============================================================
@@ -378,26 +373,17 @@ function handleQR(text) {
 ============================================================ */
 markBtn.addEventListener('click', async () => {
   if (!currentPayload) return;
-  const { sNo, name, team } = currentPayload;
+  const { sNo, name } = currentPayload;
   if (!sNo) {
     setStatus('bad', '❌ No S.No in QR — cannot match to sheet.');
     return;
   }
-
   markBtn.disabled = true;
   markBtn.innerHTML = '<span class="sp"></span> Marking...';
 
-  if (!cfg.gsUrl || !cfg.gsToken) {
-    setStatus('warn', `⚠️ Sheets not configured — "${name || sNo}" would be marked present. Set URL + token in Settings.`);
-    markBtn.innerHTML = '⚙️ Configure Sheets';
-    markBtn.className = 'btn btn-pri';
-    markBtn.disabled = false;
-    return;
-  }
-
   try {
-    const body = { token: cfg.gsToken, sheetName: cfg.gsSheet, marks: [{ sNo, present: true }] };
-    const res = await fetch(cfg.gsUrl, {
+    const body = { token: CFG.gsToken, sheetName: CFG.gsSheet, marks: [{ sNo, present: true }] };
+    const res = await fetch(CFG.gsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(body)
@@ -406,32 +392,26 @@ markBtn.addEventListener('click', async () => {
 
     if (!json.ok) {
       setStatus('bad', '❌ Sheets error: ' + escapeHtml(json.error || 'unknown'));
-      markBtn.innerHTML = '↻ Retry';
-      markBtn.disabled = false;
+      markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
       return;
     }
-
     if (json.notFound && json.notFound.length > 0) {
-      setStatus('warn', `⚠️ S.No "${sNo}" not found in sheet. Check that the sheet's ID column contains "${sNo}".`);
-      markBtn.innerHTML = '↻ Retry';
-      markBtn.disabled = false;
+      setStatus('warn', `⚠️ S.No "${sNo}" not found in sheet.`);
+      markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
       return;
     }
-
     if (json.applied && json.applied.length > 0) {
-      setStatus('ok', `✅ ${name || sNo} marked PRESENT in sheet.`);
+      setStatus('ok', `✅ ${name || sNo} marked PRESENT.`);
     } else if (json.alreadyMarked && json.alreadyMarked.length > 0) {
-      setStatus('ok', `ℹ️ ${name || sNo} was already marked present.`);
+      setStatus('ok', `ℹ️ ${name || sNo} was already present.`);
     } else {
       setStatus('warn', '⚠️ Server returned OK but no rows changed.');
     }
     markBtn.innerHTML = '✓ Marked';
     markBtn.className = 'btn btn-pri';
-    // Keep disabled — next QR scan re-enables
   } catch (err) {
     setStatus('bad', '❌ Network error: ' + escapeHtml(String(err)));
-    markBtn.innerHTML = '↻ Retry';
-    markBtn.disabled = false;
+    markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
   }
 });
 
@@ -450,10 +430,9 @@ function escapeHtml(s) {
 /* ============================================================
    BOOT
 ============================================================ */
-loadCfg();
 window.addEventListener('beforeunload', () => {
+  if (rafId) cancelAnimationFrame(rafId);
   if (stream) stream.getTracks().forEach(t => t.stop());
-  if (timer) clearInterval(timer);
 });
 </script>
 </body>
