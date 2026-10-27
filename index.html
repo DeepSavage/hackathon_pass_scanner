@@ -6,85 +6,681 @@
 <title>HackPass Scanner</title>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 <style>
-  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
-  :root{--bg:#f6f8fc;--surf:#fff;--surf2:#eef2f8;--txt:#0f172a;--txt2:#475569;--brd:#dbe4ef;--pri:#3b82f6;--ok:#10b981;--bad:#ef4444;--warn:#f59e0b;--r:14px;--rs:10px}
-  body.dark{--bg:#0a0e16;--surf:#131b27;--surf2:#1c2737;--txt:#eef4fb;--txt2:#94a3b8;--brd:#26344a;--pri:#60a5fa;--ok:#34d399;--bad:#f87171;--warn:#fbbf24}
-  body{background:var(--bg);color:var(--txt);min-height:100vh;padding:16px;line-height:1.5;transition:background .25s,color .25s}
-  .wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
-  .card{background:var(--surf);border:1px solid var(--brd);border-radius:var(--r);padding:22px;box-shadow:0 4px 14px -4px rgba(15,23,42,.12)}
-  h1{font-size:1.4rem;font-weight:800;display:flex;align-items:center;gap:10px;margin-bottom:4px}
-  .sub{font-size:.85rem;color:var(--txt2);margin-bottom:16px}
-  .vid{width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--r);overflow:hidden;position:relative;border:2px solid var(--brd)}
-  .vid.scan{border-color:var(--pri)}
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#eef2f9;--bg2:#e3e9f4;--surf:#ffffff;--surf2:#f4f7fc;--surf3:#e8eef7;
+    --txt:#0a1220;--txt2:#4b5a72;--txt3:#8291a8;
+    --brd:#d6e0ef;--brd2:#c2d0e3;
+    --pri:#3b82f6;--pri2:#2563eb;--pri-soft:#dbeafe;--pri-glow:rgba(59,130,246,.35);
+    --ok:#10b981;--ok2:#059669;--ok-soft:#d1fae5;--ok-glow:rgba(16,185,129,.35);
+    --bad:#ef4444;--bad2:#dc2626;--bad-soft:#fee2e2;--bad-glow:rgba(239,68,68,.35);
+    --warn:#f59e0b;--warn2:#d97706;--warn-soft:#fef3c7;
+    --r:20px;--rs:12px;
+    --sh-sm:0 1px 3px rgba(10,18,32,.06),0 1px 2px rgba(10,18,32,.04);
+    --sh:0 4px 16px -4px rgba(10,18,32,.10),0 2px 6px -2px rgba(10,18,32,.06);
+    --sh-lg:0 24px 48px -12px rgba(10,18,32,.18),0 8px 16px -8px rgba(10,18,32,.10);
+    --sh-glow:0 0 0 1px rgba(59,130,246,.1),0 8px 32px -8px var(--pri-glow);
+  }
+  body.dark{
+    --bg:#070b14;--bg2:#0b111d;--surf:#101827;--surf2:#16202f;--surf3:#1c2a3d;
+    --txt:#eef4fb;--txt2:#93a4bd;--txt3:#5c6d85;
+    --brd:#223145;--brd2:#2d4059;
+    --pri:#60a5fa;--pri2:#3b82f6;--pri-soft:#1e3a5f;--pri-glow:rgba(96,165,250,.4);
+    --ok:#34d399;--ok2:#10b981;--ok-soft:#0d3a2e;--ok-glow:rgba(52,211,153,.4);
+    --bad:#f87171;--bad2:#ef4444;--bad-soft:#3f1a1a;--bad-glow:rgba(248,113,113,.4);
+    --warn:#fbbf24;--warn2:#f59e0b;--warn-soft:#3f2f0d;
+    --sh-sm:0 1px 3px rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.2);
+    --sh:0 4px 16px -4px rgba(0,0,0,.5),0 2px 6px -2px rgba(0,0,0,.3);
+    --sh-lg:0 24px 48px -12px rgba(0,0,0,.6),0 8px 16px -8px rgba(0,0,0,.4);
+    --sh-glow:0 0 0 1px rgba(96,165,250,.15),0 8px 32px -8px var(--pri-glow);
+  }
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--txt);
+    min-height:100vh;
+    padding:20px 16px 32px;
+    line-height:1.5;
+    overflow-x:hidden;
+    transition:background .4s ease,color .4s ease;
+    position:relative;
+  }
+  body::before{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:
+      radial-gradient(ellipse 800px 600px at 15% -10%, var(--pri-glow), transparent 60%),
+      radial-gradient(ellipse 600px 500px at 100% 110%, var(--ok-glow), transparent 55%);
+    opacity:.4;
+    pointer-events:none;
+    z-index:0;
+    transition:opacity .4s;
+  }
+  body.dark::before{opacity:.25}
+
+  /* ---------- ANIMATIONS ---------- */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes pop{0%{transform:scale(.7);opacity:0}60%{transform:scale(1.06);opacity:1}100%{transform:scale(1);opacity:1}}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @keyframes scanLine{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
+  @keyframes pulseRing{0%{box-shadow:0 0 0 0 var(--pri-glow),inset 0 0 0 0 var(--pri-glow)}70%{box-shadow:0 0 0 20px transparent,inset 0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent,inset 0 0 0 0 transparent}}
+  @keyframes shimmer{0%{background-position:-1000px 0}100%{background-position:1000px 0}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  @keyframes gradientShift{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
+  @keyframes successPop{0%{transform:scale(.9);opacity:0}50%{transform:scale(1.04)}100%{transform:scale(1);opacity:1}}
+  @keyframes cornerGlow{0%,100%{opacity:.6}50%{opacity:1}}
+  @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+  @keyframes fadeOut{to{opacity:0;transform:scale(.96);visibility:hidden}}
+
+  /* ---------- LAYOUT ---------- */
+  .wrap{max-width:600px;margin:0 auto;display:flex;flex-direction:column;gap:20px;position:relative;z-index:1}
+
+  /* ---------- CARD ---------- */
+  .card{
+    background:var(--surf);
+    border:1px solid var(--brd);
+    border-radius:var(--r);
+    padding:28px;
+    box-shadow:var(--sh);
+    position:relative;
+    overflow:hidden;
+    transition:box-shadow .3s,border-color .3s,transform .3s;
+    animation:fadeUp .6s cubic-bezier(.16,1,.3,1) both;
+  }
+  .card::before{
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;height:3px;
+    background:linear-gradient(90deg,var(--pri),var(--ok),var(--warn),var(--pri));
+    background-size:300% 100%;
+    animation:gradientShift 6s ease infinite;
+    opacity:.7;
+  }
+  .card:hover{border-color:var(--brd2)}
+  @media(max-width:600px){.card{padding:20px;border-radius:16px}}
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen{
+    position:fixed;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:100;
+    background:var(--bg);
+    transition:opacity .4s,transform .4s;
+  }
+  #loginScreen.hidden{
+    animation:fadeOut .4s cubic-bezier(.16,1,.3,1) forwards;
+    pointer-events:none;
+  }
+  .login-card{
+    background:var(--surf);
+    border:1px solid var(--brd);
+    border-radius:var(--r);
+    padding:36px 32px 32px;
+    width:100%;
+    max-width:420px;
+    box-shadow:var(--sh-lg);
+    position:relative;
+    overflow:hidden;
+    animation:fadeUp .6s cubic-bezier(.16,1,.3,1) both;
+  }
+  .login-card::before{
+    content:'';
+    position:absolute;
+    top:0;left:0;right:0;height:4px;
+    background:linear-gradient(90deg,var(--pri),var(--ok),var(--warn),var(--pri));
+    background-size:300% 100%;
+    animation:gradientShift 6s ease infinite;
+  }
+  .login-icon{
+    width:72px;height:72px;
+    margin:0 auto 20px;
+    border-radius:22px;
+    background:linear-gradient(135deg,var(--pri),var(--ok));
+    display:flex;align-items:center;justify-content:center;
+    font-size:2.2rem;
+    box-shadow:0 12px 32px -8px var(--pri-glow),0 4px 12px -4px var(--ok-glow);
+    animation:float 3.5s ease-in-out infinite;
+  }
+  .login-title{
+    text-align:center;
+    font-size:1.5rem;
+    font-weight:800;
+    letter-spacing:-.03em;
+    margin-bottom:6px;
+    background:linear-gradient(120deg,var(--txt) 0%,var(--pri) 55%,var(--ok) 100%);
+    background-size:200% auto;
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+    animation:gradientShift 5s ease infinite;
+  }
+  .login-sub{
+    text-align:center;
+    font-size:.85rem;
+    color:var(--txt2);
+    margin-bottom:28px;
+    font-weight:500;
+  }
+  .field{
+    margin-bottom:16px;
+    position:relative;
+  }
+  .field label{
+    display:block;
+    font-size:.72rem;
+    font-weight:800;
+    color:var(--txt2);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+    margin-bottom:7px;
+  }
+  .field input{
+    width:100%;
+    padding:14px 16px;
+    background:var(--surf2);
+    border:1.5px solid var(--brd);
+    border-radius:12px;
+    color:var(--txt);
+    font-size:.95rem;
+    font-family:inherit;
+    outline:none;
+    transition:all .25s cubic-bezier(.16,1,.3,1);
+  }
+  .field input:focus{
+    border-color:var(--pri);
+    background:var(--surf);
+    box-shadow:0 0 0 4px var(--pri-soft),0 2px 8px -2px var(--pri-glow);
+  }
+  body.dark .field input:focus{box-shadow:0 0 0 4px rgba(96,165,250,.15),0 2px 8px -2px var(--pri-glow)}
+  .field input::placeholder{color:var(--txt3)}
+  .field .toggle-pass{
+    position:absolute;
+    right:8px;bottom:6px;
+    background:transparent;
+    border:none;
+    color:var(--txt3);
+    cursor:pointer;
+    padding:8px;
+    border-radius:8px;
+    font-size:1rem;
+    transition:all .2s;
+  }
+  .field .toggle-pass:hover{background:var(--surf3);color:var(--txt)}
+  .login-btn{
+    width:100%;
+    padding:15px 24px;
+    border-radius:14px;
+    border:none;
+    font-weight:700;
+    font-size:.98rem;
+    letter-spacing:-.01em;
+    cursor:pointer;
+    transition:all .25s cubic-bezier(.16,1,.3,1);
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    background:linear-gradient(135deg,var(--pri) 0%,var(--pri2) 100%);
+    color:#fff;
+    box-shadow:0 4px 14px -4px var(--pri-glow),0 2px 6px -2px var(--pri-glow);
+    margin-top:8px;
+    min-height:52px;
+    position:relative;
+    overflow:hidden;
+  }
+  .login-btn::before{
+    content:'';
+    position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.2),transparent 60%);
+    opacity:0;transition:opacity .3s;
+  }
+  .login-btn:hover:not(:disabled)::before{opacity:1}
+  .login-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px -6px var(--pri-glow),0 4px 12px -2px var(--pri-glow);filter:brightness(1.06)}
+  .login-btn:active:not(:disabled){transform:translateY(0) scale(.98)}
+  .login-btn:disabled{opacity:.6;cursor:not-allowed}
+  .login-error{
+    margin-top:14px;
+    padding:12px 16px;
+    border-radius:12px;
+    background:var(--bad-soft);
+    border:1px solid rgba(239,68,68,.3);
+    color:var(--bad2);
+    font-weight:600;
+    font-size:.85rem;
+    display:none;
+    align-items:center;
+    gap:10px;
+    animation:shake .4s;
+  }
+  body.dark .login-error{color:var(--bad);border-color:rgba(248,113,113,.3)}
+  .login-error.show{display:flex}
+  .login-error .ico{
+    width:20px;height:20px;border-radius:50%;
+    background:var(--bad);color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:.75rem;font-weight:900;flex-shrink:0;
+  }
+
+  /* ---------- HEADER ---------- */
+  .hdr{position:relative;padding-bottom:20px;margin-bottom:20px;border-bottom:1px solid var(--brd)}
+  .hdr::after{
+    content:'';
+    position:absolute;left:0;bottom:-1px;height:2px;width:60px;
+    background:linear-gradient(90deg,var(--pri),var(--ok));
+    border-radius:2px;
+  }
+  h1{
+    font-size:1.6rem;
+    font-weight:800;
+    letter-spacing:-.035em;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  h1 .ico{
+    font-size:1.9rem;
+    display:inline-block;
+    animation:float 3.5s ease-in-out infinite;
+    filter:drop-shadow(0 4px 8px var(--pri-glow));
+  }
+  h1 .txt{
+    background:linear-gradient(120deg,var(--txt) 0%,var(--pri) 55%,var(--ok) 100%);
+    background-size:200% auto;
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+    background-clip:text;
+    animation:gradientShift 5s ease infinite;
+  }
+  .sub{font-size:.875rem;color:var(--txt2);font-weight:500;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .sub .dot{width:6px;height:6px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px var(--ok-soft);animation:pulseRing 2s infinite;flex-shrink:0}
+  body.dark .sub .dot{box-shadow:0 0 0 3px rgba(52,211,153,.15)}
+  .sub .user-chip{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:2px 10px;border-radius:20px;
+    background:var(--pri-soft);color:var(--pri2);
+    font-weight:700;font-size:.75rem;
+    text-transform:capitalize;
+  }
+  body.dark .sub .user-chip{color:var(--pri)}
+
+  /* ---------- THEME BTN ---------- */
+  .theme-btn{
+    position:absolute;top:0;right:0;
+    width:44px;height:44px;
+    background:var(--surf2);
+    border:1px solid var(--brd);
+    border-radius:14px;
+    cursor:pointer;
+    font-size:1.15rem;
+    display:flex;align-items:center;justify-content:center;
+    transition:all .3s cubic-bezier(.16,1,.3,1);
+    box-shadow:var(--sh-sm);
+  }
+  .theme-btn:hover{transform:translateY(-2px) rotate(-8deg);box-shadow:var(--sh);background:var(--surf3)}
+  .theme-btn:active{transform:translateY(0) scale(.95)}
+
+  /* ---------- LOGOUT BTN ---------- */
+  .logout-btn{
+    position:absolute;top:0;right:56px;
+    height:44px;
+    padding:0 14px;
+    background:var(--surf2);
+    border:1px solid var(--brd);
+    border-radius:14px;
+    cursor:pointer;
+    font-size:.8rem;
+    font-weight:700;
+    color:var(--txt2);
+    display:flex;align-items:center;justify-content:center;gap:6px;
+    transition:all .3s cubic-bezier(.16,1,.3,1);
+    box-shadow:var(--sh-sm);
+  }
+  .logout-btn:hover{transform:translateY(-2px);box-shadow:var(--sh);background:var(--bad-soft);color:var(--bad2);border-color:rgba(239,68,68,.3)}
+  body.dark .logout-btn:hover{color:var(--bad);border-color:rgba(248,113,113,.3)}
+  .logout-btn:active{transform:translateY(0) scale(.95)}
+
+  /* ---------- VIDEO ---------- */
+  .vid{
+    width:100%;
+    aspect-ratio:4/3;
+    background:linear-gradient(180deg,#0a0e16 0%,#000 100%);
+    border-radius:var(--r);
+    overflow:hidden;
+    position:relative;
+    border:2px solid var(--brd);
+    transition:border-color .4s,box-shadow .4s;
+    box-shadow:inset 0 0 60px rgba(0,0,0,.5);
+  }
+  .vid.scan{
+    border-color:var(--pri);
+    box-shadow:0 0 0 4px var(--pri-soft),inset 0 0 60px rgba(0,0,0,.5),0 8px 32px -8px var(--pri-glow);
+    animation:pulseRing 2.4s ease-out infinite;
+  }
   #cam{width:100%;height:100%;object-fit:contain;display:block}
+
   .ov{position:absolute;inset:0;pointer-events:none;display:none}
   .vid.scan .ov{display:block}
-  .ov::before{content:'';position:absolute;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--pri),transparent);box-shadow:0 0 8px var(--pri);animation:scanln 2s ease-in-out infinite;top:0}
-  @keyframes scanln{0%{top:0}50%{top:100%}100%{top:0}}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  @keyframes pop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .btn{padding:13px 20px;border-radius:var(--rs);border:none;font-weight:700;font-size:.95rem;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--surf2);color:var(--txt);border:1px solid var(--brd);flex:1}
-  .btn-pri{background:var(--pri);color:#fff;border:none}
-  .btn-pri:hover:not(:disabled){filter:brightness(1.1)}
-  .btn-ok{background:var(--ok);color:#fff;border:none}
-  .btn-ok:hover:not(:disabled){filter:brightness(1.1)}
-  .btn-bad{background:var(--bad);color:#fff;border:none}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
-  .msg{padding:12px 16px;border-radius:var(--rs);font-weight:600;margin-top:14px;display:flex;align-items:center;gap:10px;font-size:.9rem;word-break:break-word;animation:pop .25s ease}
-  .msg-info{background:rgba(59,130,246,.12);color:var(--pri);border:1px solid var(--pri)}
-  .msg-ok{background:rgba(16,185,129,.12);color:var(--ok);border:1px solid var(--ok)}
-  .msg-bad{background:rgba(239,68,68,.12);color:var(--bad);border:1px solid var(--bad)}
-  .msg-warn{background:rgba(245,158,11,.12);color:var(--warn);border:1px solid var(--warn)}
-  .result{background:var(--surf2);border:1px solid var(--brd);border-radius:var(--rs);padding:16px;margin-top:14px;display:none;animation:pop .3s ease}
+  .ov .corner{
+    position:absolute;
+    width:36px;height:36px;
+    border:3px solid var(--pri);
+    opacity:0;
+    transition:opacity .4s;
+    animation:cornerGlow 2s ease-in-out infinite;
+  }
+  .vid.scan .ov .corner{opacity:1}
+  .ov .corner.tl{top:14px;left:14px;border-right:none;border-bottom:none;border-top-left-radius:12px}
+  .ov .corner.tr{top:14px;right:14px;border-left:none;border-bottom:none;border-top-right-radius:12px}
+  .ov .corner.bl{bottom:14px;left:14px;border-right:none;border-top:none;border-bottom-left-radius:12px}
+  .ov .corner.br{bottom:14px;right:14px;border-left:none;border-top:none;border-bottom-right-radius:12px}
+  .ov .scan-line{
+    position:absolute;left:12%;right:12%;height:2px;
+    background:linear-gradient(90deg,transparent,var(--pri) 30%,var(--pri) 70%,transparent);
+    box-shadow:0 0 14px var(--pri),0 0 4px var(--pri);
+    animation:scanLine 2.6s cubic-bezier(.4,0,.6,1) infinite;
+    border-radius:2px;
+  }
+
+  /* ---------- BUTTONS ---------- */
+  .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}
+  .btn{
+    padding:15px 24px;
+    border-radius:14px;
+    border:none;
+    font-weight:700;
+    font-size:.95rem;
+    letter-spacing:-.01em;
+    cursor:pointer;
+    transition:all .25s cubic-bezier(.16,1,.3,1);
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    background:var(--surf2);
+    color:var(--txt);
+    border:1px solid var(--brd);
+    flex:1;
+    position:relative;
+    overflow:hidden;
+    box-shadow:var(--sh-sm);
+    min-height:52px;
+  }
+  .btn::before{
+    content:'';
+    position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(255,255,255,.15),transparent);
+    opacity:0;transition:opacity .3s;
+  }
+  .btn:hover:not(:disabled)::before{opacity:1}
+  .btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:var(--sh)}
+  .btn:active:not(:disabled){transform:translateY(0) scale(.98)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none!important}
+  .btn-pri{
+    background:linear-gradient(135deg,var(--pri) 0%,var(--pri2) 100%);
+    color:#fff;border:none;
+    box-shadow:0 4px 14px -4px var(--pri-glow),0 2px 6px -2px var(--pri-glow);
+  }
+  .btn-pri:hover:not(:disabled){box-shadow:0 8px 24px -6px var(--pri-glow),0 4px 12px -2px var(--pri-glow);filter:brightness(1.06)}
+  .btn-ok{
+    background:linear-gradient(135deg,var(--ok) 0%,var(--ok2) 100%);
+    color:#fff;border:none;
+    box-shadow:0 4px 14px -4px var(--ok-glow);
+  }
+  .btn-ok:hover:not(:disabled){box-shadow:0 8px 24px -6px var(--ok-glow);filter:brightness(1.06)}
+  .btn-bad{
+    background:linear-gradient(135deg,var(--bad) 0%,var(--bad2) 100%);
+    color:#fff;border:none;
+    box-shadow:0 4px 14px -4px var(--bad-glow);
+  }
+  .btn-bad:hover:not(:disabled){box-shadow:0 8px 24px -6px var(--bad-glow);filter:brightness(1.06)}
+
+  /* ---------- DIAG ---------- */
+  .diag{
+    display:grid;
+    grid-template-columns:repeat(4,1fr);
+    gap:8px;
+    margin-top:16px;
+    padding:12px;
+    background:var(--surf2);
+    border:1px solid var(--brd);
+    border-radius:var(--rs);
+    font-family:'SF Mono','Courier New',monospace;
+  }
+  .diag-item{display:flex;flex-direction:column;align-items:center;gap:2px}
+  .diag-item .lbl{font-size:.62rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .diag-item .val{font-size:.85rem;color:var(--txt);font-weight:700;font-variant-numeric:tabular-nums;transition:color .2s}
+  .diag-item .val.active{color:var(--pri)}
+  .diag-item .val.hit{color:var(--ok)}
+
+  /* ---------- STATUS ---------- */
+  .msg{
+    padding:14px 18px;
+    border-radius:14px;
+    font-weight:600;
+    margin-top:18px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    font-size:.9rem;
+    word-break:break-word;
+    animation:slideDown .35s cubic-bezier(.16,1,.3,1);
+    border:1px solid;
+    line-height:1.45;
+  }
+  .msg .ico{font-size:1.15rem;flex-shrink:0}
+  .msg-info{background:var(--pri-soft);color:var(--pri2);border-color:rgba(59,130,246,.3)}
+  body.dark .msg-info{color:var(--pri);border-color:rgba(96,165,250,.3)}
+  .msg-ok{background:var(--ok-soft);color:var(--ok2);border-color:rgba(16,185,129,.3)}
+  body.dark .msg-ok{color:var(--ok);border-color:rgba(52,211,153,.3)}
+  .msg-bad{background:var(--bad-soft);color:var(--bad2);border-color:rgba(239,68,68,.3)}
+  body.dark .msg-bad{color:var(--bad);border-color:rgba(248,113,113,.3)}
+  .msg-warn{background:var(--warn-soft);color:var(--warn2);border-color:rgba(245,158,11,.3)}
+  body.dark .msg-warn{color:var(--warn);border-color:rgba(251,191,36,.3)}
+
+  /* ---------- RESULT ---------- */
+  .result{
+    margin-top:18px;
+    border-radius:16px;
+    padding:0;
+    display:none;
+    overflow:hidden;
+    border:1px solid var(--brd);
+    background:var(--surf2);
+    animation:successPop .45s cubic-bezier(.16,1,.3,1);
+    box-shadow:var(--sh);
+  }
   .result.show{display:block}
-  .result-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--brd);font-size:.9rem}
+  .result-hdr{
+    padding:14px 20px;
+    background:linear-gradient(135deg,var(--ok-soft),transparent);
+    border-bottom:1px solid var(--brd);
+    display:flex;align-items:center;gap:10px;
+    font-weight:800;font-size:.8rem;
+    color:var(--ok2);
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+  body.dark .result-hdr{color:var(--ok)}
+  .result-hdr .check{
+    width:22px;height:22px;border-radius:50%;
+    background:linear-gradient(135deg,var(--ok),var(--ok2));
+    color:#fff;
+    display:flex;align-items:center;justify-content:center;
+    font-size:.75rem;font-weight:900;
+    box-shadow:0 2px 8px var(--ok-glow);
+    animation:pop .4s cubic-bezier(.16,1,.3,1);
+  }
+  .result-body{padding:6px 20px 20px}
+  .result-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:12px 0;
+    border-bottom:1px solid var(--brd);
+    font-size:.9rem;
+    gap:16px;
+  }
   .result-row:last-of-type{border-bottom:none}
-  .result-row .lbl{color:var(--txt2);font-weight:600}
-  .result-row .val{font-weight:700;text-align:right;word-break:break-all;max-width:65%}
-  .sp{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
-  .theme-btn{position:absolute;top:16px;right:16px;background:var(--surf2);border:1px solid var(--brd);border-radius:50%;width:38px;height:38px;cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center}
-  .diag{font-family:'Courier New',monospace;font-size:.72rem;color:var(--txt2);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
-  .diag strong{color:var(--txt)}
-  .hdr{position:relative}
+  .result-row .lbl{
+    color:var(--txt2);
+    font-weight:600;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+  }
+  .result-row .val{
+    font-weight:700;
+    text-align:right;
+    word-break:break-word;
+    max-width:65%;
+    font-size:.95rem;
+    color:var(--txt);
+    transition:color .2s;
+  }
+  #rName{color:var(--pri)}
+  .result .btn{margin-top:8px;width:100%}
+
+  .sp{
+    display:inline-block;
+    width:16px;height:16px;
+    border:2.5px solid rgba(255,255,255,.35);
+    border-top-color:#fff;
+    border-radius:50%;
+    animation:spin .7s linear infinite;
+  }
+
+  @media(max-width:600px){
+    body{padding:14px 12px 24px}
+    h1{font-size:1.35rem}
+    h1 .ico{font-size:1.6rem}
+    .sub{font-size:.8rem}
+    .btn{padding:13px 18px;font-size:.88rem;min-height:48px}
+    .diag{grid-template-columns:repeat(2,1fr);gap:6px;padding:10px}
+    .theme-btn{width:40px;height:40px;font-size:1rem}
+    .logout-btn{height:40px;right:50px;padding:0 10px;font-size:.72rem}
+    .result-body{padding:6px 16px 16px}
+    .result-hdr{padding:12px 16px;font-size:.72rem}
+    .msg{padding:12px 14px;font-size:.85rem;gap:10px}
+    .login-card{padding:28px 22px 24px}
+    .login-icon{width:62px;height:62px;font-size:1.9rem}
+    .login-title{font-size:1.3rem}
+  }
+  @media(max-width:380px){
+    .diag{grid-template-columns:repeat(2,1fr)}
+    .btn{min-height:46px;font-size:.85rem}
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
+
+<!-- ============ LOGIN SCREEN ============ -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-icon">🔐</div>
+    <div class="login-title">HackPass Access</div>
+    <div class="login-sub">Sign in to continue to the scanner</div>
+
+    <div class="field">
+      <label for="loginUser">Username</label>
+      <input type="text" id="loginUser" placeholder="Enter your username" autocomplete="username" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="loginPass">Password</label>
+      <input type="password" id="loginPass" placeholder="Enter your password" autocomplete="current-password">
+      <button type="button" class="toggle-pass" id="togglePass" aria-label="Show password">👁️</button>
+    </div>
+
+    <button class="login-btn" id="loginBtn">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      Sign In
+    </button>
+
+    <div class="login-error" id="loginError">
+      <span class="ico">✕</span>
+      <span id="loginErrorText">Invalid username or password</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MAIN APP ============ -->
+<div class="wrap" id="mainApp" style="display:none">
 
   <div class="card">
     <div class="hdr">
-      <button class="theme-btn" id="themeBtn">🌙</button>
-      <h1>🎟️ HackPass Scanner</h1>
-      <div class="sub">Scan a QR → decrypt → mark present</div>
+      <button class="logout-btn" id="logoutBtn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Logout
+      </button>
+      <button class="theme-btn" id="themeBtn" aria-label="Toggle theme">
+        <span id="themeIcon">🌙</span>
+      </button>
+      <h1>
+        <span class="ico">🎟️</span>
+        <span class="txt">HackPass Scanner</span>
+      </h1>
+      <div class="sub">
+        <span class="dot"></span>
+        <span>Scan a QR → decrypt → mark present</span>
+        <span class="user-chip" id="userChip" style="display:none"></span>
+      </div>
     </div>
 
     <div class="vid" id="vidC">
       <video id="cam" autoplay playsinline webkit-playsinline muted></video>
-      <div class="ov"></div>
+      <div class="ov">
+        <div class="corner tl"></div>
+        <div class="corner tr"></div>
+        <div class="corner bl"></div>
+        <div class="corner br"></div>
+        <div class="scan-line"></div>
+      </div>
     </div>
 
-    <div class="row" style="margin-top:14px">
-      <button class="btn btn-pri" id="startBtn">▶ Start Camera</button>
-      <button class="btn btn-bad" id="stopBtn" disabled>⏹ Stop</button>
+    <div class="row">
+      <button class="btn btn-pri" id="startBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Start Camera
+      </button>
+      <button class="btn btn-bad" id="stopBtn" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        Stop
+      </button>
     </div>
 
     <div class="diag">
-      <span>video: <strong id="dRes">—</strong></span>
-      <span>fps: <strong id="dFps">0</strong></span>
-      <span>decodes: <strong id="dDec">0</strong></span>
-      <span>misses: <strong id="dMiss">0</strong></span>
+      <div class="diag-item"><span class="lbl">Video</span><span class="val" id="dRes">—</span></div>
+      <div class="diag-item"><span class="lbl">FPS</span><span class="val" id="dFps">0</span></div>
+      <div class="diag-item"><span class="lbl">Decodes</span><span class="val" id="dDec">0</span></div>
+      <div class="diag-item"><span class="lbl">Misses</span><span class="val" id="dMiss">0</span></div>
     </div>
 
     <div id="status" class="msg msg-info">
-      <span>📷</span> Press Start Camera to begin.
+      <span class="ico">📷</span>
+      <span>Press Start Camera to begin scanning.</span>
     </div>
 
     <div id="resultBox" class="result">
-      <div class="result-row"><span class="lbl">Name</span><span class="val" id="rName">—</span></div>
-      <div class="result-row"><span class="lbl">Team</span><span class="val" id="rTeam">—</span></div>
-      <div class="result-row"><span class="lbl">S.No</span><span class="val" id="rSno">—</span></div>
-      <button class="btn btn-ok" id="markBtn" style="margin-top:14px;width:100%">✓ Mark Present</button>
+      <div class="result-hdr">
+        <span class="check">✓</span>
+        <span>Verified Participant</span>
+      </div>
+      <div class="result-body">
+        <div class="result-row"><span class="lbl">Name</span><span class="val" id="rName">—</span></div>
+        <div class="result-row"><span class="lbl">Team</span><span class="val" id="rTeam">—</span></div>
+        <div class="result-row"><span class="lbl">S.No</span><span class="val" id="rSno">—</span></div>
+        <button class="btn btn-ok" id="markBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Mark Present
+        </button>
+      </div>
     </div>
   </div>
 
@@ -102,6 +698,16 @@ const CFG = {
 };
 
 /* ============================================================
+   ADMIN CREDENTIALS — hardcoded
+============================================================ */
+const ADMINS = {
+  'amit': 'hacksprint2axis',
+  'ayush': 'hacksprint2axis',
+  'dev': 'hacksprint2axis',
+  'superadmin': 'superaccess'
+};
+
+/* ============================================================
    STATE
 ============================================================ */
 let isCamOn = false, stream = null;
@@ -115,30 +721,156 @@ let cropCanvas = null, cropCtx = null;
 let lastText = null, lastTime = 0;
 let currentPayload = null;
 let diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0, misses: 0 };
+let currentUser = null;
 
 /* ============================================================
    DOM
 ============================================================ */
 const $ = id => document.getElementById(id);
+const loginScreen = $('loginScreen'), mainApp = $('mainApp');
+const loginUser = $('loginUser'), loginPass = $('loginPass'), loginBtn = $('loginBtn');
+const loginError = $('loginError'), loginErrorText = $('loginErrorText');
+const togglePass = $('togglePass');
+const logoutBtn = $('logoutBtn'), userChip = $('userChip');
 const cam = $('cam'), vidC = $('vidC'), startBtn = $('startBtn'), stopBtn = $('stopBtn');
 const statusEl = $('status'), resultBox = $('resultBox');
 const rName = $('rName'), rTeam = $('rTeam'), rSno = $('rSno'), markBtn = $('markBtn');
 const dRes = $('dRes'), dFps = $('dFps'), dDec = $('dDec'), dMiss = $('dMiss');
-const themeBtn = $('themeBtn');
+const themeBtn = $('themeBtn'), themeIcon = $('themeIcon');
 
 /* ============================================================
    THEME
 ============================================================ */
 if (localStorage.getItem('hp_theme') === 'dark') {
   document.body.classList.add('dark');
-  themeBtn.textContent = '☀️';
+  themeIcon.textContent = '☀️';
 }
 themeBtn.addEventListener('click', () => {
   document.body.classList.toggle('dark');
   const d = document.body.classList.contains('dark');
-  themeBtn.textContent = d ? '☀️' : '🌙';
+  themeIcon.textContent = d ? '☀️' : '🌙';
+  themeIcon.style.transform = 'rotate(' + (d ? 360 : 0) + 'deg)';
+  setTimeout(() => themeIcon.style.transform = '', 400);
   localStorage.setItem('hp_theme', d ? 'dark' : 'light');
 });
+
+/* ============================================================
+   LOGIN
+============================================================ */
+function showLoginError(msg) {
+  loginErrorText.textContent = msg || 'Invalid username or password';
+  loginError.classList.remove('show');
+  void loginError.offsetWidth;
+  loginError.classList.add('show');
+}
+function clearLoginError() {
+  loginError.classList.remove('show');
+}
+function setLoginBusy(busy) {
+  loginBtn.disabled = busy;
+  if (busy) {
+    loginBtn.innerHTML = '<span class="sp"></span> Signing in...';
+  } else {
+    loginBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> Sign In';
+  }
+}
+
+function attemptLogin() {
+  clearLoginError();
+  const user = loginUser.value.trim();
+  const pass = loginPass.value;
+  if (!user || !pass) {
+    showLoginError('Please enter both username and password');
+    return;
+  }
+  setLoginBusy(true);
+  // Small delay for UX (feels like verification)
+  setTimeout(() => {
+    const key = user.toLowerCase();
+    if (ADMINS[key] && ADMINS[key] === pass) {
+      currentUser = key;
+      // Save session
+      sessionStorage.setItem('hp_user', key);
+      // Transition
+      setLoginBusy(false);
+      loginScreen.classList.add('hidden');
+      mainApp.style.display = 'flex';
+      mainApp.style.animation = 'fadeUp .5s cubic-bezier(.16,1,.3,1) both';
+      // Show user chip
+      userChip.textContent = key;
+      userChip.style.display = 'inline-flex';
+      // Focus camera controls
+      setTimeout(() => startBtn.focus(), 300);
+    } else {
+      setLoginBusy(false);
+      showLoginError('Invalid username or password');
+      loginPass.value = '';
+      loginPass.focus();
+      // Shake the card
+      const card = document.querySelector('.login-card');
+      card.style.animation = 'none';
+      void card.offsetWidth;
+      card.style.animation = 'fadeUp .6s cubic-bezier(.16,1,.3,1) both, shake .4s';
+    }
+  }, 350);
+}
+
+loginBtn.addEventListener('click', attemptLogin);
+loginPass.addEventListener('keydown', e => { if (e.key === 'Enter') attemptLogin(); });
+loginUser.addEventListener('keydown', e => { if (e.key === 'Enter') loginPass.focus(); });
+
+togglePass.addEventListener('click', () => {
+  if (loginPass.type === 'password') {
+    loginPass.type = 'text';
+    togglePass.textContent = '🙈';
+  } else {
+    loginPass.type = 'password';
+    togglePass.textContent = '👁️';
+  }
+  loginPass.focus();
+});
+
+function doLogout() {
+  // Stop camera if running
+  if (isCamOn) stopCamera();
+  // Clear session
+  sessionStorage.removeItem('hp_user');
+  currentUser = null;
+  // Reset UI
+  userChip.style.display = 'none';
+  mainApp.style.display = 'none';
+  loginScreen.classList.remove('hidden');
+  loginScreen.style.animation = 'fadeIn .3s ease both';
+  loginUser.value = '';
+  loginPass.value = '';
+  loginPass.type = 'password';
+  togglePass.textContent = '👁️';
+  clearLoginError();
+  setLoginBusy(false);
+  // Reset scanner UI
+  resultBox.classList.remove('show');
+  currentPayload = null;
+  setStatus('info', 'Press Start Camera to begin scanning.');
+  setTimeout(() => loginUser.focus(), 300);
+}
+logoutBtn.addEventListener('click', doLogout);
+
+/* ============================================================
+   SESSION RESUME
+============================================================ */
+(function resumeSession() {
+  const saved = sessionStorage.getItem('hp_user');
+  if (saved && ADMINS[saved]) {
+    currentUser = saved;
+    loginScreen.classList.add('hidden');
+    mainApp.style.display = 'flex';
+    userChip.textContent = saved;
+    userChip.style.display = 'inline-flex';
+  } else {
+    // Ensure login screen is visible on first load
+    loginScreen.classList.remove('hidden');
+  }
+})();
 
 /* ============================================================
    DECRYPT
@@ -174,7 +906,7 @@ function pickField(obj, candidates) {
 async function startCamera() {
   if (isCamOn) return;
   try {
-    setStatus('info', 'Requesting camera...');
+    setStatus('info', 'Requesting camera access...');
 
     scanCanvas = document.createElement('canvas');
     scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
@@ -218,7 +950,7 @@ async function startCamera() {
     startBtn.disabled = true;
     stopBtn.disabled = false;
     vidC.classList.add('scan');
-    setStatus('info', '📷 Camera active — point at a QR code');
+    setStatus('info', 'Camera active — align the QR code inside the frame');
 
     diag = { frames: 0, decodes: 0, fpsStart: Date.now(), fps: 0, misses: 0 };
     updateDiag();
@@ -229,7 +961,7 @@ async function startCamera() {
 
   } catch (err) {
     console.error(err);
-    setStatus('bad', '❌ ' + (err.message || 'Camera error'));
+    setStatus('bad', 'Camera error: ' + (err.message || 'access denied'));
     startBtn.disabled = false;
     stopBtn.disabled = true;
     vidC.classList.remove('scan');
@@ -244,7 +976,7 @@ function stopCamera() {
   startBtn.disabled = false;
   stopBtn.disabled = true;
   vidC.classList.remove('scan');
-  setStatus('info', '⏹ Camera stopped.');
+  setStatus('info', 'Camera stopped.');
 }
 startBtn.addEventListener('click', startCamera);
 stopBtn.addEventListener('click', stopCamera);
@@ -326,6 +1058,8 @@ function updateDiag() {
   dFps.textContent = diag.fps;
   dDec.textContent = diag.decodes;
   dMiss.textContent = diag.misses;
+  dFps.classList.toggle('active', diag.fps > 0);
+  dDec.classList.toggle('hit', diag.decodes > 0);
 }
 
 /* ============================================================
@@ -333,19 +1067,19 @@ function updateDiag() {
 ============================================================ */
 function handleQR(text) {
   if (!text.startsWith('HACKPASS:')) {
-    setStatus('bad', '❌ Not a HackPass QR: ' + escapeHtml(text.substring(0, 40)));
+    setStatus('bad', 'Not a HackPass QR code');
     return;
   }
   const b64 = text.substring('HACKPASS:'.length);
   const decrypted = decrypt(b64, CFG.secretKey);
   if (decrypted === null) {
-    setStatus('bad', '❌ Decryption failed — wrong key or corrupted QR.');
+    setStatus('bad', 'Decryption failed — wrong key or corrupted QR');
     return;
   }
   let payload;
   try { payload = JSON.parse(decrypted); }
   catch (e) {
-    setStatus('bad', '❌ Not valid JSON after decrypt: ' + escapeHtml(decrypted.substring(0, 60)));
+    setStatus('bad', 'Invalid data after decrypt');
     return;
   }
 
@@ -360,12 +1094,12 @@ function handleQR(text) {
   rSno.textContent = sNo || '—';
   resultBox.classList.add('show');
   markBtn.disabled = false;
-  markBtn.textContent = '✓ Mark Present';
+  markBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Mark Present';
   markBtn.className = 'btn btn-ok';
 
   if (navigator.vibrate) navigator.vibrate(80);
 
-  setStatus('ok', `✅ Detected: ${name || 'unknown'}${team ? ' · ' + team : ''}`);
+  setStatus('ok', 'Verified: ' + (name || 'participant') + (team ? ' · ' + team : ''));
 }
 
 /* ============================================================
@@ -375,7 +1109,7 @@ markBtn.addEventListener('click', async () => {
   if (!currentPayload) return;
   const { sNo, name } = currentPayload;
   if (!sNo) {
-    setStatus('bad', '❌ No S.No in QR — cannot match to sheet.');
+    setStatus('bad', 'No S.No in QR — cannot match to sheet');
     return;
   }
   markBtn.disabled = true;
@@ -391,26 +1125,26 @@ markBtn.addEventListener('click', async () => {
     const json = await res.json();
 
     if (!json.ok) {
-      setStatus('bad', '❌ Sheets error: ' + escapeHtml(json.error || 'unknown'));
+      setStatus('bad', 'Sheets error: ' + (json.error || 'unknown'));
       markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
       return;
     }
     if (json.notFound && json.notFound.length > 0) {
-      setStatus('warn', `⚠️ S.No "${sNo}" not found in sheet.`);
+      setStatus('warn', 'S.No "' + sNo + '" not found in sheet');
       markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
       return;
     }
     if (json.applied && json.applied.length > 0) {
-      setStatus('ok', `✅ ${name || sNo} marked PRESENT.`);
+      setStatus('ok', (name || sNo) + ' marked PRESENT');
     } else if (json.alreadyMarked && json.alreadyMarked.length > 0) {
-      setStatus('ok', `ℹ️ ${name || sNo} was already present.`);
+      setStatus('ok', (name || sNo) + ' was already present');
     } else {
-      setStatus('warn', '⚠️ Server returned OK but no rows changed.');
+      setStatus('warn', 'Server returned OK but no rows changed');
     }
-    markBtn.innerHTML = '✓ Marked';
+    markBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Marked';
     markBtn.className = 'btn btn-pri';
   } catch (err) {
-    setStatus('bad', '❌ Network error: ' + escapeHtml(String(err)));
+    setStatus('bad', 'Network error: ' + String(err));
     markBtn.innerHTML = '↻ Retry'; markBtn.disabled = false;
   }
 });
@@ -418,9 +1152,10 @@ markBtn.addEventListener('click', async () => {
 /* ============================================================
    UTILS
 ============================================================ */
-function setStatus(type, html) {
+function setStatus(type, text) {
+  const icons = { ok: '✓', bad: '✕', warn: '!', info: 'i' };
   statusEl.className = 'msg msg-' + type;
-  statusEl.innerHTML = `<span>${type === 'ok' ? '✅' : type === 'bad' ? '❌' : type === 'warn' ? '⚠️' : 'ℹ️'}</span> ${html}`;
+  statusEl.innerHTML = '<span class="ico">' + icons[type] + '</span><span>' + escapeHtml(text) + '</span>';
 }
 function escapeHtml(s) {
   if (s == null) return '';
